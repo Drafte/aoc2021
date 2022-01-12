@@ -1,11 +1,11 @@
-use std::{marker::PhantomData, fs::File, io::Read};
+use std::{fs::File, io::Read};
 
-use serde::{de::{Error, Visitor}, Deserialize, Deserializer};
-use serde_json;
+// use serde::{de::{Error, Visitor}, Deserialize, Deserializer};
+// use serde_json;
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[serde(untagged)]
+#[derive(Debug)]
+// #[serde(rename_all = "lowercase")]
+// #[serde(untagged)]
 enum Direction {
     Forward,
     Up,
@@ -62,38 +62,48 @@ struct Move {
 // }
 
 
-impl<'de> Deserialize<'de> for Move {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?.to_lowercase();
-        let mut r = s.split(' ');
-        let d: Direction = serde_json::from_str(r.next().unwrap()).unwrap();
-        let v: i32 = match d {
-            Direction::Forward => r.next().unwrap().parse().unwrap(),
-            Direction::Up => -1 * r.next().unwrap().parse::<i32>().unwrap(),
-            Direction::Down => r.next().unwrap().parse().unwrap(),
-        };
-        Ok(Move { d, v } )
-    }
+// impl<'de> Deserialize<'de> for Move {
+//     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+//     where
+//         D: Deserializer<'de>,
+//     {
+//         let s = String::deserialize(deserializer)?.to_lowercase();
+//         let mut r = s.split(' ');
+//         let d: Direction = serde_json::from_str(r.next().unwrap()).unwrap();
+//         let v: i32 = match d {
+//             Direction::Forward => r.next().unwrap().parse().unwrap(),
+//             Direction::Up => -1 * r.next().unwrap().parse::<i32>().unwrap(),
+//             Direction::Down => r.next().unwrap().parse().unwrap(),
+//         };
+//         Ok(Move { d, v } )
+//     }
 
-    serde::forward_to_deserialize_any! {
-        bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
-        bytes byte_buf map unit newtype_struct
-        ignored_any unit_struct tuple_struct tuple option identifier
-    }
-}
+//     serde::forward_to_deserialize_any! {
+//         bool u8 u16 u32 u64 i8 i16 i32 i64 f32 f64 char str string seq
+//         bytes byte_buf map unit newtype_struct
+//         ignored_any unit_struct tuple_struct tuple option identifier
+//     }
+// }
 struct Location {
     x: i32,
     y: i32,
+    aim: i32,
 }
 
 impl Location {
     pub fn relocate(self: &mut Self, m: &Move) {
         match m.d {
             Direction::Forward => self.x += m.v,
-            Direction::Up | Direction::Down => self.y += m.v,
+            Direction::Up => self.y -= m.v,
+            Direction::Down => self.y += m.v,
+        }
+    }
+
+    pub fn relocate2(self: &mut Self, m: &Move) {
+        match m.d {
+            Direction::Forward => { self.x += m.v; self.y += self.aim * m.v; }
+            Direction::Up => self.aim -= m.v,
+            Direction::Down => self.aim += m.v,
         }
     }
 }
@@ -104,15 +114,48 @@ fn main() {
     file.read_to_string(&mut contents).unwrap();
     
     println!("{:?}", meep(&contents));
+    println!("{:?}", meep2(&contents));
 }
 
 fn meep(contents: &String) -> i32 {
-    let mut l = Location { x: 0, y: 0};
+    let mut l = Location { x: 0, y: 0, aim: 0};
     let mut m = contents.split('\n');
 
-    m.by_ref().for_each(|i| {
-        l.relocate(&serde_json::from_str(i).unwrap());
+    m.by_ref().for_each(|d| {
+        let mut d = d.split(" ");
+        let dir: &str = d.next().unwrap();
+        let d1 = match dir.to_lowercase().as_str() {
+            "forward" => Direction::Forward,
+            "up" => Direction::Up,
+            "down" => Direction::Down,
+            _ => panic!("invalid direction"),
+        };
+        let v: i32 = d.next().unwrap().parse().unwrap();
+        let m = Move { d: d1, v };
+        l.relocate(&m);
     });
+
+    l.x * l.y
+}
+
+fn meep2(contents: &String) -> i32 {
+    let mut l = Location { x: 0, y: 0, aim: 0};
+    let mut m = contents.split('\n');
+
+    m.by_ref().for_each(|d| {
+        let mut d = d.split(" ");
+        let dir: &str = d.next().unwrap();
+        let d1 = match dir.to_lowercase().as_str() {
+            "forward" => Direction::Forward,
+            "up" => Direction::Up,
+            "down" => Direction::Down,
+            _ => panic!("invalid direction"),
+        };
+        let v: i32 = d.next().unwrap().parse().unwrap();
+        let m = Move { d: d1, v };
+        l.relocate2(&m);
+    });
+
     l.x * l.y
 }
 
@@ -123,5 +166,13 @@ fn test_meep() {
     file.read_to_string(&mut contents).unwrap();
     
     assert_eq!(meep(&contents), 54);
+}
 
+#[test]
+fn test_meep2() {
+    let mut file = File::open("../../input/week2.test.txt").unwrap();
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).unwrap();
+    
+    assert_eq!(meep2(&contents), 54);
 }
